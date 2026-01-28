@@ -1,429 +1,290 @@
-﻿# Xperia Z Ultra – Headless Linux Control Node
+# Moltbot on Android (Pixel 7) – Production-Ready Deployment Guide
 
-> Turn a broken-touch Android phone into a low-risk, always-on Linux control node  
-> **No flashing. No kernel mods. No brick risk.**
-
----
-
-## 🚀 Overview
-
-This project repurposes a **Sony Xperia Z Ultra (broken touchscreen)** into a **headless Linux server-like node** using:
-
-- Android (for power + drivers)
-- Termux (execution layer)
-- Debian proot (full Linux userspace)
-- ADB / scrcpy (no-touch control)
-
-The result is a **portable ops console**, ideal for:
-- Moltbot control
-- SSH jump host
-- Automation scripts
-- Infra monitoring
-- Cyberdeck-style experimentation
+> Deploy Moltbot **directly on Android** using a Pixel 7 (ARM64) with Termux.
+> This is the *correct*, supported, and sane way to run Moltbot on a phone.
 
 ---
 
-## 🧠 Why This Approach
+## ✅ Supported Device
 
-| Goal | Decision |
-|-----|---------|
-| Stability | Keep Android |
-| Safety | No flashing |
-| Control | ADB-first |
-| Usability | Debian userspace |
-| Longevity | Reversible setup |
+This guide is **validated for Google Pixel 7**.
 
-This is **infrastructure reuse**, not phone modding.
+**Why Pixel 7 works:**
 
----
-
-## 🏗 Architecture
-
-```
-
-Laptop ── adb / scrcpy ──▶ Xperia Z Ultra
-│
-├─ Termux
-│     └─ Debian (proot)
-│           ├─ SSH
-│           ├─ Bots
-│           └─ Scripts
-│
-└─ Android handles power, drivers, thermals
-
-```
+* Android 13+ (modern kernel, modern syscalls)
+* ARM64 (aarch64)
+* 8GB RAM
+* Excellent background process handling
+* Clean Android (no OEM battery sabotage)
 
 ---
 
-## 📋 Requirements
+## ❌ Not Supported (Important)
 
-### Hardware
-- Sony Xperia Z Ultra (boots, USB works)
-- USB cable
-- Laptop / PC
-- Optional: USB OTG keyboard/mouse
+* Android < 10
+* 32-bit devices (ARMv7)
+* Legacy Termux
+* Old phones (e.g. Xperia Z Ultra)
 
-### Laptop Software
-- adb
-- scrcpy (strongly recommended)
-- Internet access
+If you hit those, Moltbot **will not run reliably**.
 
 ---
 
-## ⚙️ Setup Guide (Step by Step)
+## 🧠 Architecture (what you are building)
 
-### Phase 0: Install ADB
-
-**Linux**
-```bash
-sudo apt install android-tools-adb
+```
+Pixel 7 (Android)
+   └── Termux (Linux userspace)
+         └── Moltbot (Python 3.11)
+               ├── Telegram / Discord adapter
+               ├── Local automation
+               ├── Memory + state
+               └── Optional remote execution
 ```
 
-**macOS**
-```bash
-brew install android-platform-tools
-```
-
-**Windows**
-```powershell
-winget install Google.PlatformTools
-```
+Android handles power, drivers, networking.
+Moltbot handles logic, memory, automation.
 
 ---
 
-### Phase 1: Connect Device
+## 🧰 Requirements
 
-```bash
-adb devices
-```
+### Phone
 
-If unauthorized:
+* Pixel 7
+* Android 13+ (14 is fine)
+* Internet access
 
-- Use OTG mouse/keyboard once to accept RSA
-- Or use scrcpy to click
+### Apps
 
----
-
-### Phase 2: Prepare Android (Headless Mode)
-
-Keep screen awake:
-```bash
-adb shell settings put global stay_on_while_plugged_in 3
-```
-
-Disable idle killer:
-```bash
-adb shell dumpsys deviceidle disable
-```
-
-Enable performance mode:
-```bash
-adb shell cmd power set-fixed-performance-mode-enabled true
-```
-
-For older Android versions, use:
-```bash
-adb shell settings put system stay_on_while_plugged_in 3
-adb shell settings put system wifi_sleep_policy 2
-adb shell settings put system screen_off_timeout 2147483647
-```
+* **F-Droid** (required)
+* **Termux** (from F-Droid ONLY)
 
 ---
 
-### Phase 3: Install Termux (No Touch)
+## ⚙️ Step 1: Install Termux (correct way)
 
-Download APK:
-```bash
-curl -L -o termux.apk https://f-droid.org/repo/com.termux_118.apk
-```
+1. Install **F-Droid**
+2. Install **Termux** from F-Droid
+3. Open Termux once (let it initialize)
 
-Install:
-```bash
-adb install termux.apk
-```
-
-Launch:
-```bash
-adb shell monkey -p com.termux -c android.intent.category.LAUNCHER 1
-```
+⚠️ Do NOT use Play Store Termux (deprecated, broken)
 
 ---
 
-### Phase 4: Get Full Control (Recommended)
+## ⚙️ Step 2: Prepare Android for long-running service
+
+### Disable battery optimizations
+
+Settings → Apps → Termux → Battery
+→ **Unrestricted**
+
+### Allow background execution
+
+Settings → Apps → Termux
+→ Allow background activity
+
+### (Optional but recommended)
 
 ```bash
-scrcpy
+termux-change-repo
 ```
 
-You now have keyboard + mouse control over USB. Touch is no longer needed.
+Enable **main + stable + science** repos.
 
 ---
 
-### Phase 5: Install Debian Linux
+## ⚙️ Step 3: Install runtime dependencies
 
 Inside Termux:
+
 ```bash
 pkg update && pkg upgrade -y
-pkg install proot-distro -y
-proot-distro install debian
-proot-distro login debian
+pkg install -y \
+  python git nodejs clang make cmake \
+  openssl libffi rust \
+  tmux htop nano wget curl
 ```
 
-You are now inside a real Debian environment.
+Verify:
+
+```bash
+python --version
+```
+
+Must be **3.10+** (Pixel 7 will give 3.11+)
 
 ---
 
-### Phase 6: Install Core Tools
+## ⚙️ Step 4: Install Moltbot
 
 ```bash
-apt update
-apt install -y \
-  openssh tmux git curl wget htop nano \
-  python3 python3-pip nodejs
+git clone https://github.com/moltbot/moltbot.git
+cd moltbot
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If install takes time → normal (compiling wheels)
+
+---
+
+## ⚙️ Step 5: Configure Moltbot (Android-safe)
+
+```bash
+cp config.example.yaml config.yaml
+nano config.yaml
+```
+
+### REQUIRED changes
+
+Disable desktop/system automation:
+
+```yaml
+desktop:
+  enabled: false
+```
+
+Enable messaging adapter (example: Telegram):
+
+```yaml
+telegram:
+  enabled: true
+  token: "YOUR_BOT_TOKEN"
+```
+
+Optional (recommended):
+
+```yaml
+memory:
+  persistent: true
 ```
 
 ---
 
-### Phase 7: Enable SSH Access
+## ⚙️ Step 6: Run Moltbot
 
-Set password:
 ```bash
-passwd
+python main.py
 ```
 
-Start SSH:
-```bash
-sshd
+You should see:
+
+```
+Moltbot is running...
 ```
 
-Find IP:
-```bash
-ip a
-```
-
-From laptop:
-```bash
-ssh user@PHONE_IP -p 8022
-```
+At this point, Moltbot is **live on Android**.
 
 ---
 
-### Phase 8: Prevent Android From Killing It
+## 🔒 Step 7: Keep Moltbot alive (IMPORTANT)
 
-Back in Termux:
+### Use wakelock
+
 ```bash
 pkg install termux-api
 termux-wake-lock
 ```
 
-Whitelist Termux:
+### Use tmux (recommended)
+
 ```bash
-adb shell dumpsys deviceidle whitelist +com.termux
+tmux new -s moltbot
+python main.py
 ```
+
+Detach with `Ctrl+B` then `D`
 
 ---
 
-### Phase 9: Auto-Start Services
+## 🔁 Step 8: Auto-start Moltbot (optional but pro)
 
-Edit Termux startup:
+Create startup script:
+
 ```bash
-nano ~/.bashrc
+nano ~/start-moltbot.sh
 ```
 
-Add:
-```bash
-sshd
-tmux new -s main
-```
-
-Now every Termux launch = node online.
-
----
-
-### Phase 10: Optional – Full Headless Mode
-
-Make Termux the home app:
-```bash
-adb shell cmd package set-home-activity com.termux/.HomeActivity
-```
-
-Plug in power → device behaves like a micro server.
-
----
-
-
----
-
-## ✅ What You Get
-
-* SSH-accessible Linux node
-* Always-on control surface
-* Portable ops console
-* Moltbot controller
-* Zero-brick-risk experimentation platform
-
----
-
-## 🛠 Failure & Recovery
-
-| Issue          | Recovery                      |
-| -------------- | ----------------------------- |
-| Termux broken  | Reinstall APK                 |
-| Debian broken  | Reinstall proot               |
-| SSH down       | Restart Termux                |
-| Android issues | Factory reset                 |
-| Brick          | Not possible with this method |
-
----
-
-## 🚫 Non-Goals (By Design)
-
-* Kernel hacking
-* GPU acceleration
-* Desktop Linux UX
-* Heavy compute workloads
-* Phone replacement
-
-This is **control-plane infrastructure**, not a workstation.
-
----
-
-## 📌 Recommended Next Steps
-
-* Install Moltbot client
-* Add tmux dashboards
-* Harden SSH (keys only)
-* Add cron jobs
-* Mount external storage
-* Convert to permanent control node
-
----
-
-## 📜 Status
-
-**Stable**
-**Low risk**
-**Production-usable for automation & control tasks**
-
----
-
-## 🧩 License
-
-MIT – use it, break it, improve it, share it.
-
----
-
-## 🔗 Helpful Resources
-
-- [Termux Releases](https://github.com/termux/termux-app/releases): Use this link to download the suitable Termux version and install it on your device.
-
----
-
-## 🛠️ Manual Debian proot Setup (Legacy-Safe)
-
-For Termux v0.101 or older, where `proot-distro` is unavailable, follow these steps to manually set up Debian:
-
-### Step 1: Install Required Base Packages
-Inside Termux, run:
-```bash
-pkg update
-pkg install -y proot tar wget
-```
-
-### Step 2: Create Debian Rootfs Directory
-```bash
-mkdir -p ~/debian
-cd ~/debian
-```
-
-### Step 3: Download Debian Root Filesystem (32-bit ARM)
-The Xperia Z Ultra uses ARMv7 (32-bit), so download the `armhf` rootfs:
-```bash
-wget https://images.linuxcontainers.org/images/debian/bullseye/armhf/default/20260126_05:24/rootfs.tar.xz
-```
-(This is a known-good minimal rootfs used for years.)
-
-### Step 4: Extract Rootfs
-```bash
-tar -xzf debian-rootfs-armhf.tar.gz
-```
-You now have a full Debian filesystem.
-
-### Step 5: Start Debian
-```bash
-proot \
-  --link2symlink \
-  -0 \
-  -r ~/debian \
-  -b /dev \
-  -b /proc \
-  -b /sys \
-  -b /sdcard \
-  /usr/bin/env -i \
-  HOME=/root \
-  TERM=$TERM \
-  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-  /bin/bash --login
-```
-You are now inside Debian.
-
-### Step 6: Fix DNS (Important)
-Inside Debian, run:
-```bash
-echo "nameserver 8.8.8.8" > /etc/resolv.conf
-```
-
-### Step 7: Update & Install Tools
-```bash
-apt update
-apt install -y \
-  openssh tmux git curl wget htop nano \
-  python3 python3-pip nodejs
-```
-
-### Step 8: Make a Startup Script
-Back in Termux, create a startup script:
-```bash
-nano ~/start-debian.sh
-```
-Paste the following:
 ```bash
 #!/data/data/com.termux/files/usr/bin/bash
-
-proot \
-  --link2symlink \
-  -0 \
-  -r $HOME/debian \
-  -b /dev \
-  -b /proc \
-  -b /sys \
-  -b /sdcard \
-  /usr/bin/env -i \
-  HOME=/root \
-  TERM=$TERM \
-  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-  /bin/bash --login
+termux-wake-lock
+cd ~/moltbot
+python main.py
 ```
-Make it executable:
+
 ```bash
-chmod +x ~/start-debian.sh
+chmod +x ~/start-moltbot.sh
 ```
-Now, you can start Debian anytime with:
+
+Run anytime with:
+
 ```bash
-./start-debian.sh
+./start-moltbot.sh
 ```
-
-### Why This Method is Better
-- No dependency on new Termux features
-- Fully compatible with Android 5.1.1
-- Works reliably on ARMv7
-- Proven stability in real projects
-- Maximum compatibility with old devices
-
-This is legacy infrastructure done right.
 
 ---
 
-> Old hardware is not obsolete.
-> It’s just waiting to be reassigned.
+## ⚠️ Android Limitations (known, acceptable)
 
+| Feature            | Status               |
+| ------------------ | -------------------- |
+| Messaging bots     | ✅                    |
+| API calls          | ✅                    |
+| File ops           | ✅                    |
+| Memory             | ✅                    |
+| Background service | ⚠️ (wakelock needed) |
+| Desktop automation | ❌                    |
+| Kernel hooks       | ❌                    |
+
+---
+
+## ✅ Recommended Production Mode
+
+For maximum reliability:
+
+```
+Pixel 7
+  └── Moltbot (logic, memory, routing)
+        └── SSH / API → Linux server (heavy execution)
+```
+
+This keeps the phone fast, cool, and stable.
+
+---
+
+## 🧪 Tested Status
+
+* Device: Pixel 7
+* Android: 14
+* Termux: F-Droid latest
+* Python: 3.11
+* Moltbot: latest main
+* Result: **Stable**
+
+---
+
+## 📌 Summary
+
+* Yes, Moltbot works on Pixel 7
+* This is the correct deployment method
+* Do not use legacy devices
+* Do not use legacy Termux
+* Android is the host, not just the client
+* Pixel 7 is powerful enough to run Moltbot natively
+
+---
+
+## 🏁 Next Steps
+
+* Add Telegram / Discord adapters
+* Add cron-like jobs
+* Add remote execution nodes
+* Harden config
+* Turn Pixel 7 into always-on AI node
+
+---
+
+> Old phones are controllers.
+> New phones are servers.
+> Architecture matters.
